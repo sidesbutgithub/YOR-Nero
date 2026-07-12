@@ -58,7 +58,7 @@ TWO_PI = 2.0 * math.pi
 USE_FEEDBACK_FOR_STEER = False
 DRIVE_VEL_SCALE = 2.0
 
-DRIVE_MAX_CURRENT = 30 # Amp rating of buck converter powering motor
+DRIVE_MAX_VOLTAGE = 12 # Voltage rating of buck converter powering motor
 
 
 # ----------------------------
@@ -315,8 +315,8 @@ class DriveMotor:
         except Exception:
             return float("nan")
 
-class DriveMotorCurrent:
-    """Drive motor driven by SparkFlex current setpoint for torque controll."""
+class DriveMotorVoltage:
+    """Drive motor driven by SparkFlex volatge proportional to torque control."""
 
     def __init__(self, can_if: str, can_id: int):
         self.dev = SparkFlex(can_if, can_id)
@@ -325,19 +325,19 @@ class DriveMotorCurrent:
             if IdleMode and hasattr(self.dev, "SetIdleMode"):
                 self.dev.SetIdleMode(IdleMode.kCoast)
             if CtrlType and hasattr(self.dev, "SetCtrlType"):
-                self.dev.SetCtrlType(CtrlType.kCurrent)
+                self.dev.SetCtrlType(CtrlType.kVoltage)
         except Exception:
             pass
 
     def heartbeat(self) -> None:
         self.dev.Heartbeat()
 
-    def set_current_raw(self, amps: float) -> None:
-        self.dev.SetCurrent(amps)
+    def set_volatge_raw(self, v: float) -> None:
+        self.dev.SetVoltage(v)
 
-    def get_current_raw(self) -> float:
+    def get_voltage_raw(self) -> float:
         try:
-            return float(self.dev.GetCurrent())
+            return float(self.dev.GetVoltage())
         except Exception:
             return float("nan")
 
