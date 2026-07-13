@@ -25,8 +25,6 @@ class YORMujoco:
         self.viewer = mujoco.viewer.launch_passive(
             model=self.model,
             data=self.data,
-            show_left_ui=False,
-            show_right_ui=False,
         )
         self.viewer.opt.frame = mujoco.mjtFrame.mjFRAME_SITE
 
@@ -34,7 +32,7 @@ class YORMujoco:
         self.left_q_desired: Optional[np.ndarray] = None
         self.left_q_desired_lock = threading.Lock()
         self.left_ik_solver = SingleArmIK(
-            mjcf_path,
+            (_HERE / "yor-description/nero-welded-base-and-lift.mjcf").as_posix(),
             solver_dt=self.solver_dt,
             joint_names=[
                 "left_arm_joint1",
@@ -43,6 +41,7 @@ class YORMujoco:
                 "left_arm_joint4",
                 "left_arm_joint5",
                 "left_arm_joint6",
+                "left_arm_joint7",
             ],
             ee_frame="left_arm_ee",
         )
@@ -50,7 +49,7 @@ class YORMujoco:
         self.right_q_desired: Optional[np.ndarray] = None
         self.right_q_desired_lock = threading.Lock()
         self.right_ik_solver = SingleArmIK(
-            mjcf_path,
+            (_HERE / "yor-description/nero-welded-base-and-lift.mjcf").as_posix(),
             solver_dt=self.solver_dt,
             joint_names=[
                 "right_arm_joint1",
@@ -59,6 +58,7 @@ class YORMujoco:
                 "right_arm_joint4",
                 "right_arm_joint5",
                 "right_arm_joint6",
+                "right_arm_joint7",
             ],
             ee_frame="right_arm_ee",
         )
@@ -159,6 +159,6 @@ class YORMujoco:
 if __name__ == "__main__":
     _HERE = Path(__file__).parent
     yor_mujoco = YORMujoco(mjcf_path=(_HERE / "yor-description" / "scene.mjcf").as_posix())
-    rpc_server = RPCServer(yor_mujoco, "localhost", 8081, threaded=False)
+    rpc_server = RPCServer(yor_mujoco, 8081, threaded=False)
     atexit.register(rpc_server.stop)
     rpc_server.start()

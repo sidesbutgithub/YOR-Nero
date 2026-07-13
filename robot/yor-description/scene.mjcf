@@ -1,5 +1,5 @@
 <mujoco model="scene">
-  <include file="robot-welded-base-and-lift.mjcf"/>
+  <include file="robot.mjcf"/>
 
   <statistic center="0.25 0 0.6" extent="1.0" meansize="0.05"/>
 
