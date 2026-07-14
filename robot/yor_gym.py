@@ -34,8 +34,8 @@ TIRE_RADIUS = 0.0381  # m
 
 MODULE_ORDER = ("FL", "FR", "RR", "RL")
 
-CAN_IDS_DRIVE = (1, 4, 3, 2)  # [FL, FR, RR, RL]
-CAN_IDS_ROT = (5, 8, 7, 6)  # [FL, FR, RR, RL]
+DRIVE_NAMES = ("drive_front_left_ctrl", "drive_front_right_ctrl", "drive_back_right_ctrl", "drive_back_left_ctrl")  # [FL, FR, RR, RL]
+ROT_NAMES = ("front_left_steer_ctrl", "front_right_steer_ctrl", "back_right_steer_ctrl", "back_left_steer_ctrl")  # [FL, FR, RR, RL]
 
 ROTATION_OFFSETS = np.array([0.75, 0.00, 0.25, 0.50], dtype=float)
 
@@ -80,13 +80,8 @@ class BaseMujoco():
             ]
         )
 
-        self.rotation_motors = [
-            RotationMotor(drivetrain_can, CAN_IDS_ROT[i], ROTATION_OFFSETS[i])
-            for i in range(NUM_SWERVES)
-        ]
-        self.drive_motors = [
-            DriveMotor(drivetrain_can, CAN_IDS_DRIVE[i]) for i in range(NUM_SWERVES)
-        ]
+        self.rotation_motors = [mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_ACTUATOR, i) for i in ROT_NAMES]# [FL, FR, RR, RL]
+        self.drive_motors = [mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_ACTUATOR, i) for i in DRIVE_NAMES]# [FL, FR, RR, RL]
 
 
         self.steer_pos = np.zeros(NUM_SWERVES)
@@ -95,8 +90,6 @@ class BaseMujoco():
         self.dx = np.zeros(3)
 
         self.base_target = np.zeros(3)
-
-        self.control_loop_running = False
 
         # --- S-curve profiling state (kept; now optional per-command) ---
         self._smooth_active = False  # whether to apply smoothing for the *current* command
@@ -143,20 +136,20 @@ class BaseMujoco():
 
         target_fracs = rad_to_frac(wheel_angles)
         for i, rm in enumerate(self.rotation_motors):
-            rm.set_position_fraction(float(target_fracs[i]))
+            self.data.ctrl[rm] = float(target_fracs[i])
 
         for i, dm in enumerate(self.drive_motors):
-            dm.set_velocity_mps(float(wheel_speeds[i]))
+            self.data.ctrl[dm] = float(wheel_speeds[i])
 
 
     # -------------- helpers --------------
     def _update_state(self) -> None:
 
         for i, rm in enumerate(self.rotation_motors):
-            self.steer_pos[i] = rm.get_position_rad()
+            self.steer_pos[i] = self.data.ctrl[rm]
 
         for i, dm in enumerate(self.drive_motors):
-            self.drive_vel[i] = dm.get_velocity_raw()
+            self.drive_vel[i] = self.data.ctrl[dm]
 
     def _angle_and_speed_to_vehicle_velocity(
         self, wheel_speeds: np.ndarray, wheel_angles: np.ndarray
@@ -238,6 +231,33 @@ class BaseMujoco():
         ang = ang[ROT_DIAG_SWAP_PERM]
         return wrap_pi(ang)
     
+    def reset(self):
+        self.data.qpos = np.copy(self.initial_qpos)
+        self.data.qvel = np.copy(self.initial_qvel)
+        self.data.ctrl = np.zeros(self.model.nu)
+        self.data.time = 0
+    
+        self.steer_pos = np.zeros(NUM_SWERVES)
+        self.drive_vel = np.zeros(NUM_SWERVES)
+        self.x = np.zeros(3)
+        self.dx = np.zeros(3)
+
+        self.base_target = np.zeros(3)
+
+        # --- S-curve profiling state (kept; now optional per-command) ---
+        self._smooth_active = False  # whether to apply smoothing for the *current* command
+        self._v_prof = np.zeros(3, dtype=float)
+        self._seg_v0 = np.zeros(3, dtype=float)
+        self._seg_v1 = np.zeros(3, dtype=float)
+        self._seg_t = 0.0
+        self._seg_T = 0.0
+
+        self._a_max = np.array([1.9, 1.9, 6.5], dtype=float)
+        self._T_min = 0.01
+        self._retarget_eps = 1e-3
+
+
+        mujoco.mj_forward(self.model,self.data)
 
 class YORGymEnv(gym.Env):
     env_limit = 10
@@ -246,7 +266,7 @@ class YORGymEnv(gym.Env):
                 use_orientation=False,noise_scale=0.01,
                 return_full_trajectory=False, max_speed=1.0, max_steering_angle=1.0,prop_steps=100):
         self.max_steps = max_steps
-        self.yor = YORGymRaw((_HERE / "yor-description" / "scene.mjcf").as_posix(),self.env_limit)
+        self.yor = BaseMujoco((_HERE / "yor-description" / "scene.mjcf").as_posix(),self.env_limit)
         self.yor.reset()
         self.action_space = spaces.Box(low=-1,high=1,shape=(3,))
 
