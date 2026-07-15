@@ -65,6 +65,7 @@ class JoystickNode:
 
         # D-pad debug state
         self.last_pad_y = 0
+        self.last_pad_x = 0
         self.warned_no_hat = False
 
     def display_joystick_inputs(self):
@@ -163,6 +164,7 @@ class JoystickNode:
                     pad_y = 0
                 else:
                     pad = self.joystick.get_hat(0)
+                    pad_x = pad[0]
                     pad_y = pad[1]
 
                 if pad_y != self.last_pad_y:
@@ -176,8 +178,23 @@ class JoystickNode:
                     else:
                         print("RPC: lift_stop()")
                         self.yor.lift_stop()
-                    self.last_pad_y = pad_y
+                        self.last_pad_y = pad_y
 
+                if pad_x != self.last_pad_x:
+                    print(f"D-pad Y changed: {self.last_pad_x} -> {pad_x}")
+                    if pad_x > 0:
+                        print("Arm: Home")
+                        self.yor.left_arm.home()
+                    elif pad_x < 0:
+                        print("Arm: Home")
+                        self.yor.left_arm.home()
+                    else:
+                        print("Arm: None")
+                        
+                    self.last_pad_x = pad_x
+
+
+                
             rate.sleep()
 
 
