@@ -103,15 +103,10 @@ class BaseMujoco():
         self._T_min = 0.01
         self._retarget_eps = 1e-3
 
-    def apply_action(self, cmd):
+    def apply_action(self, action):
 
-        self.base_target = np.array(cmd["target"], dtype=float)
+        self.base_target = action
         self._smooth_active = True # always true in physical
-
-        for m in self.drive_motors:
-            m.heartbeat()
-        for m in self.rotation_motors:
-            m.heartbeat()
 
         self._update_state()
 
@@ -133,13 +128,14 @@ class BaseMujoco():
         wheel_speeds, wheel_angles = self._vehicle_velocity_to_angle_and_speed(
             v_used, cos_error_scaling=True
         )
-
+        print("wheel speed:", wheel_speeds, [" wheel angles:"], wheel_angles)
         target_fracs = rad_to_frac(wheel_angles)
         for i, rm in enumerate(self.rotation_motors):
-            self.data.ctrl[rm] = float(target_fracs[i])
+            self.data.ctrl[rm] = float(wheel_angles[i])
 
         for i, dm in enumerate(self.drive_motors):
             self.data.ctrl[dm] = float(wheel_speeds[i])
+        #mujoco.mj_step(self.model, self.data)
 
 
     # -------------- helpers --------------
@@ -256,13 +252,28 @@ class BaseMujoco():
         self._T_min = 0.01
         self._retarget_eps = 1e-3
 
+        mujoco.mj_resetData(self.model, self.data)
 
         mujoco.mj_forward(self.model,self.data)
+
+
+    def get_obs(self,noisy=False,use_obs=False,noise_scale=0.01):
+        if use_obs:
+            vel = self._angle_and_speed_to_vehicle_velocity([self.data.qvel[i] for i in self.drive_motors], [self.data.qpos[i] for i in self.rotation_motors])
+            vel = np.sqrt(self.data.qvel[0]**2+self.data.qvel[1]**2)
+            s = np.array([self.data.qpos[0],self.data.qpos[1],quat2euler(self.data.qpos[3:7])[2],vel,self.data.qpos[7]])
+            if noisy:
+                s += np.random.normal(0,noise_scale*self.range)
+        else:
+            s = np.concatenate([self.data.qpos,self.data.qvel])
+            if noisy:
+                raise NotImplementedError
+        return s
 
 class YORGymEnv(gym.Env):
     env_limit = 10
     distance_threshold = 0.5
-    def __init__(self,max_steps=30,
+    def __init__(self,max_steps=1000,
                 use_orientation=False,noise_scale=0.01,
                 return_full_trajectory=False, max_speed=1.0, max_steering_angle=1.0,prop_steps=100):
         self.max_steps = max_steps
@@ -286,6 +297,13 @@ class YORGymEnv(gym.Env):
         self.max_steering_angle = max_steering_angle
 
         self.prop_steps = prop_steps
+
+        self.render_mode = 'human'
+        self.mujoco_renderer = MujocoRenderer(
+            self.yor.model,
+            self.yor.data,
+            camera_name="track"
+        )
 
     def reset(self,goal=None):
         self.yor.reset()
@@ -321,9 +339,10 @@ class YORGymEnv(gym.Env):
         self.steps += 1
         
         applied_action = np.zeros_like(action)
-        applied_action[0] = action[0]*self.max_steering_angle
+        applied_action[0] = action[0]*self.max_speed
         applied_action[1] = action[1]*self.max_speed
-        self.yor.apply_action(action)
+        applied_action[2] = action[2]*self.max_steering_angle
+        self.yor.apply_action(applied_action)
         
         current_traj = []
         for _ in range(self.prop_steps):
@@ -338,7 +357,12 @@ class YORGymEnv(gym.Env):
         }
         done = self._terminal(obs["achieved_goal"],obs["desired_goal"]) or self.steps >= self.max_steps
         reward = self.compute_reward(obs["achieved_goal"],obs["desired_goal"],{})
+
+        self.render()
         return obs,reward,done,info
+    
+    def render(self):
+        return self.mujoco_renderer.render(self.render_mode)
 
 def goal_distance(goal_a, goal_b):
     assert goal_a.shape == goal_b.shape
@@ -351,12 +375,12 @@ def quat2euler(q_mj):
 
 
 if __name__ == "__main__":     
-    env = YORGymEnv()
+    env = YORGymEnv(max_steering_angle=1.0)
     obs = env.reset()
     traj = [np.copy(obs["observation"])]
-    for _ in range(300):
+    for _ in range(100):
         action = env.action_space.sample()
-        action = np.array([0.0,1.0])
+        action = np.array([1.0, 0.0, 0.0])
         obs, reward, done, _ = env.step(action)
         traj.append(np.copy(obs["observation"]))
         print("Achieved: ",obs["achieved_goal"])
@@ -366,7 +390,79 @@ if __name__ == "__main__":
         if done: 
             print("Done")
             break
-    
+    for _ in range(100):
+        action = env.action_space.sample()
+        action = np.array([0.0,0.0, 0.0])
+        obs, reward, done, _ = env.step(action)
+        traj.append(np.copy(obs["observation"]))
+        print("Achieved: ",obs["achieved_goal"])
+        print("Desired: ",obs["desired_goal"])
+        print("Reward: ",reward)
+        print("==========================================")
+        if done: 
+            print("Done")
+            break
+    for _ in range(100):
+        action = env.action_space.sample()
+        action = np.array([-1.0,0.0, 0.0])
+        obs, reward, done, _ = env.step(action)
+        traj.append(np.copy(obs["observation"]))
+        print("Achieved: ",obs["achieved_goal"])
+        print("Desired: ",obs["desired_goal"])
+        print("Reward: ",reward)
+        print("==========================================")
+        if done: 
+            print("Done")
+            break
+    for _ in range(100):
+        action = env.action_space.sample()
+        action = np.array([0.0,0.0, 0.0])
+        obs, reward, done, _ = env.step(action)
+        traj.append(np.copy(obs["observation"]))
+        print("Achieved: ",obs["achieved_goal"])
+        print("Desired: ",obs["desired_goal"])
+        print("Reward: ",reward)
+        print("==========================================")
+        if done: 
+            print("Done")
+            break
+    for _ in range(100):
+        action = env.action_space.sample()
+        action = np.array([0.0,1.0, 0.0])
+        obs, reward, done, _ = env.step(action)
+        traj.append(np.copy(obs["observation"]))
+        print("Achieved: ",obs["achieved_goal"])
+        print("Desired: ",obs["desired_goal"])
+        print("Reward: ",reward)
+        print("==========================================")
+        if done: 
+            print("Done")
+            break
+    for _ in range(100):
+        action = env.action_space.sample()
+        action = np.array([0.0,0.0, 0.0])
+        obs, reward, done, _ = env.step(action)
+        traj.append(np.copy(obs["observation"]))
+        print("Achieved: ",obs["achieved_goal"])
+        print("Desired: ",obs["desired_goal"])
+        print("Reward: ",reward)
+        print("==========================================")
+        if done: 
+            print("Done")
+            break
+    for _ in range(100):
+        action = env.action_space.sample()
+        action = np.array([0.0,-1.0, 0.0])
+        obs, reward, done, _ = env.step(action)
+        traj.append(np.copy(obs["observation"]))
+        print("Achieved: ",obs["achieved_goal"])
+        print("Desired: ",obs["desired_goal"])
+        print("Reward: ",reward)
+        print("==========================================")
+        if done: 
+            print("Done")
+            break
+    env.close()
     traj = np.array(traj)
 
     import matplotlib.pyplot as plt
@@ -378,6 +474,5 @@ if __name__ == "__main__":
     plt.xlabel("x")
     plt.ylabel("y")
     plt.savefig("env_test.png")
-    print(traj[:,0],traj[:,1])
 
 

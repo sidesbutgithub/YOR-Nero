@@ -347,7 +347,7 @@
     <position name="back_right_steer_ctrl" joint="back_right_steer" class="steering_joint" />
     <velocity name="drive_back_right_ctrl" joint="drive_back_right" class="drive_joint" />
 
-    <position name="Lift" tendon="lift" class="telescope" />
+    <position name="lift" tendon="lift" class="telescope" />
 
     
     <!-- Left arm actuators (7 DOF) -->
